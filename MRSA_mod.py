@@ -1,8 +1,16 @@
 import numpy as np
+from ete3 import Tree
 
 class Pool:
   def __init__(self, strains):
     self.strains = strains
+    self.tree = Tree()
+    self.d_var = {}
+    for i,v in enumerate(strains):
+        self.d_var["S{0}".format(i)] = self.tree.add_child(name=".".join(str(j) for j in self.strains[i].parent),dist=self.strains[i].mut)
+
+  def tree(self):
+    return(self.tree)
 
   def __repr__(self):
     return self.__str__()
@@ -16,6 +24,7 @@ class Pool:
     parent_strain.num_child += 1
     patient_strain = Strain(parent_strain.parent + [parent_strain.num_child], 0, num_muts, t)
     self.strains.append(patient_strain)
+    self.d_var["S{0}".format(len(self.strains)-1)] = self.d_var["S{0}".format(index)].add_child(name=".".join(str(i) for i in parent_strain.parent) + "." + str(parent_strain.num_child),dist=num_muts)
     return len(self.strains)-1
 
 
@@ -27,14 +36,18 @@ class Strain:
     self.t_birth = t_birth
 
   def __repr__(self):
-    return self.__str__()
-
-  def __str__(self):
     return  'Strain(t_birth = '+str("%.2f" % self.t_birth) \
       +', mut = '+str(self.mut) \
       +', num_child = '+str(self.num_child) \
       +', parent = '+str(self.parent) \
       +')'
+
+  def __str__(self):
+    return  '['+str("%.2f" % self.t_birth) \
+      +','+str(self.mut) \
+      +','+str(self.num_child) \
+      +','+str(self.parent) \
+      +']'
 
 
 class Hospital:
@@ -125,7 +138,7 @@ class System:
     hosp_strains = "".join(hosp_strains)
     return print(fin_strain,hosp_strains,"Transfers:",*transfers, sep="\n")
 
-x = [Strain([1],0,0,0),Strain([2],0,0,0),Strain([3],0,0,0),Strain([4],0,0,0)] #pool of all strains at initialisation
+x = [Strain(["A"],0,0,0),Strain(["B"],0,0,0),Strain(["C"],0,0,0),Strain(["D"],0,0,0)] #pool of all strains at initialisation
 n = 4
 strains = [[[0,1],[9,1]],[[0],[10]],[[2],[10]],[[3],[10]]] #list of length n=#hosp where [strain index],[number of each strain]
 p = [[0,0,1,0],
@@ -133,4 +146,16 @@ p = [[0,0,1,0],
      [0,0,1,0],
      [0,0,0,1]]
 sys = System(n,1,1,5,x,strains,p,pop=1)
+print(sys)
 sys.transfers()
+print(sys.pool.tree.get_ascii(show_internal=True))
+print(sys.pool.tree.write(format=3))
+
+# i = 0
+# while len(sys.pool.strains[i].parent) == 1:
+#     print(sys.pool.strains[i].parent)
+#     i += 1
+
+# print(sys.pool.strains[10].parent)
+# for i,v in enumerate(sys.pool.strains):
+#     print(i)
