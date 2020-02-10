@@ -20,21 +20,26 @@ class Pool:
   def __str__(self):
     return 'Pool(strains = '+str(self.strains)+')'
 
-  def add_new_strain(self, mut_rate, index, t, hosp):
+  def add_new_strain(self, mut_rate, index, t, hosp, k, len_seq):
     num_muts = np.random.poisson(mut_rate*(t - self.strains[index].t_birth))
     parent_strain = self.strains[index]
     if num_muts > 0:
-        parent_strain.num_child += 1
-        patient_strain = Strain(parent_strain.parent + [parent_strain.num_child], 0, num_muts, t)
-        self.strains.append(patient_strain)
-        self.d_var["S{0}".format(len(self.strains)-1)] = self.d_var["S{0}".format(index)].add_child(name=".".join(str(i) for i in patient_strain.parent),dist=t - self.strains[index].t_birth)
-        self.d_var["S{0}".format(len(self.strains)-1)].add_features(hospital=hosp, t_birth=t)
-        #self.d_var["S{0}".format(len(self.strains)-1)].add_feature('alive',"T")
-        self.d_var["S{0}".format(index)] = self.d_var["S{0}".format(index)].add_child(name=self.d_var["S{0}".format(index)].name,dist=0)
-        self.d_var["S{0}".format(index)].add_features(hospital=hosp,t_birth="t")
-        #self.d_var["S{0}".format(index)].add_feature('alive',"T")
-        return len(self.strains)-1
-    elif num_muts == 0:
+        if k + num_muts <= len_seq:
+            parent_strain.num_child += 1
+            patient_strain = Strain(parent_strain.parent + [parent_strain.num_child], 0, num_muts, t, parent_strain.gen_seq + []) #add empty list so python dosen't edit parent gen_seq and generate copy that refers to diferent object to source
+            for i in range(k,k+num_muts): #mutate num_mutations from parent strain
+                patient_strain.gen_seq[i] = 1
+            self.strains.append(patient_strain)
+            self.d_var["S{0}".format(len(self.strains)-1)] = self.d_var["S{0}".format(index)].add_child(name=".".join(str(i) for i in patient_strain.parent),dist=t - self.strains[index].t_birth)
+            self.d_var["S{0}".format(len(self.strains)-1)].add_features(hospital=hosp, t_birth=t)
+            #self.d_var["S{0}".format(len(self.strains)-1)].add_feature('alive',"T")
+            self.d_var["S{0}".format(index)] = self.d_var["S{0}".format(index)].add_child(name=self.d_var["S{0}".format(index)].name,dist=0)
+            self.d_var["S{0}".format(index)].add_features(hospital=hosp,t_birth="t")
+            #self.d_var["S{0}".format(index)].add_feature('alive',"T")
+            return len(self.strains)-1
+        else:
+            return -1 #stop run
+    elif num_muts == 0: #no mutation event so strain observed is identical to parent one
         return index
 
   def del_strain(self, index, time): ##unused at the moment in the script
@@ -42,17 +47,19 @@ class Pool:
     self.d_var["S{0}".format(index)].add_child(name="X",dist=time - self.d_var["S{0}".format(index)].dist)
 
 class Strain:
-  def __init__(self, parent, num_child, mut, t_birth):
+  def __init__(self, parent, num_child, mut, t_birth, gen_seq):
     self.parent = parent
     self.num_child = num_child
     self.mut = mut
     self.t_birth = t_birth
+    self.gen_seq = gen_seq
 
   def __repr__(self):
     return  'Strain(t_birth = '+str("%.2f" % self.t_birth) \
       +', mut = '+str(self.mut) \
       +', num_child = '+str(self.num_child) \
       +', parent = '+str(self.parent) \
+      +', gen_seq = '+str(self.gen_seq) \
       +')'
 
   def __str__(self):
@@ -60,6 +67,7 @@ class Strain:
       +','+str(self.mut) \
       +','+str(self.num_child) \
       +','+str(self.parent) \
+      +','+str(self.gen_seq) \
       +']'
 
 
@@ -118,7 +126,7 @@ class Hospital:
 
 
 class System:
-  def __init__(self, n, inf_rate, mut_rate, tfr_rate, tfin, pool, strains, pop):
+  def __init__(self, n, inf_rate, mut_rate, tfr_rate, tfin, pool, strains, pop, k, len_seq):
     self.n = n #number of hospitals
     self.tfin = tfin
     self.inf_rate = inf_rate #rate at which strains mutate
@@ -127,6 +135,8 @@ class System:
     #self.p = p #threshold probability for transfer
     self.pool = Pool(pool)
     self.pop = pop #population size of total number of cases at each site (same at each site)
+    self.k = k #current global counter value for where in gen_seq to start mutating values
+    self.len_seq = len_seq #length of genetic sequence of ones and zeros
     self.H = []
     for i in range(n):
       self.H.append(Hospital(strains[i], self.tfin, self.mut_rate, self.inf_rate, self.tfr_rate[i], self.pop))
@@ -141,7 +151,7 @@ class System:
     return self.__str__()
 
   def __str__(self):
-    return 'System(n = '+str(self.n)+', inf_rate = '+str(self.inf_rate)+', mut_rate = '+str(self.mut_rate)+', tfr_rate = '+str(self.tfr_rate)+', tfin = '+str(self.tfin)+', pool = '+str(self.pool)+', H = '+str(self.H)+')'
+    return 'System(n = '+str(self.n)+', inf_rate = '+str(self.inf_rate)+', mut_rate = '+str(self.mut_rate)+', tfr_rate = '+str(self.tfr_rate)+', tfin = '+str(self.tfin)+', k = '+str(self.k)+', len_seq = '+str(self.len_seq)+', pool = '+str(self.pool)+', H = '+str(self.H)+')'
     #', strains = '+str(self.strains)+
 
   def transfers(self):
@@ -151,27 +161,32 @@ class System:
     inf_time = min(inf_times)
     tfr_time = min(min(i) for i in tfr_times)
     min_time = min(inf_time,tfr_time)
+    k = self.k
     while min_time < self.tfin:
         if inf_time < tfr_time:
             hosp_ind = inf_times.index(inf_time)  #select the index of the current min of times
             next_hosp = self.H[hosp_ind]      #select the hospital corresponding to that index
             hap_ind = next_hosp.indices[0][np.random.choice(len(next_hosp.indices[0]),p=[i/sum(next_hosp.indices[1]) for i in next_hosp.indices[1]])] #randomly with weighting select an entry from the indicies attribute of Hospital corresponding to the index of a strain in pool
-            temp_ind = self.pool.add_new_strain(self.mut_rate, hap_ind, inf_time, hosp_ind) #return index of new strain that is the child from one of the strains in the current incidence of H
-            del_ind = self.H[hosp_ind].add_index(temp_ind) #add that strain to the list of strains in that H
-            # self.H[hosp_ind].d_hosp["H{0}-{1}".format(hosp_ind,temp_ind)] = self.H[hosp_ind].d_hosp["H{0}-{1}".format(hosp_ind,hap_ind)].add_child(name=".".join(str(i) for i in self.pool.strains[temp_ind].parent),dist=min_time - self.pool.strains[hap_ind].t_birth)
-            # self.H[hosp_ind].d_hosp["H{0}-{1}".format(hosp_ind,del_ind)] = self.H[hosp_ind].d_hosp["H{0}-{1}".format(hosp_ind,del_ind)].add_child(name="X",dist=t - self.pool.strains[hap_ind].t_birth)
-            # self.H[hosp_ind].d_hosp["H{0}-{1}".format(hosp_ind,del_ind)].add_feature("alive","F")
-            # self.H[hosp_ind].d_hosp["H{0}-{1}".format(hosp_ind,temp_ind)] = self.tree.add_child(name=".".join(str(i) for i in self.pool.strains[temp_ind].parent),dist=min_time - self.pool.strains[hap_ind].t_birth)
-            # if del_ind >= 0:
-            #   self.pool.del_strain(del_ind, inf_time)
-            #new_ind = np.random.choice(range(len(self.H)),p=self.p[hosp_ind]) #randomly pick a new hospital index with weighted probability where a transfer to the same hospital is used as a convention for no transfer taking place
-            # if new_ind != hosp_ind:
-            #     transfers.append([inf_time, hosp_ind, new_ind])
-            #     self.H[new_ind].add_index(temp_ind)
-            inf_times = [inf_time + t.next_inf_time() for t in self.H]
-            tfr_times = [[inf_time + i for i in t.next_tfr_time()] for t in self.H]
-            tfr_time = min(min(i) for i in tfr_times)
-            inf_time = min(inf_times)
+            temp_ind = self.pool.add_new_strain(self.mut_rate, hap_ind, inf_time, hosp_ind, k, self.len_seq) #return index of new strain that is the child from one of the strains in the current incidence of H
+            if temp_ind == -1: #if k + num_mut > len_seq then stop
+                inf_time = self.tfin
+            else:
+                del_ind = self.H[hosp_ind].add_index(temp_ind) #add that strain to the list of strains in that H and deletes a random strain from the list uniformly
+                # self.H[hosp_ind].d_hosp["H{0}-{1}".format(hosp_ind,temp_ind)] = self.H[hosp_ind].d_hosp["H{0}-{1}".format(hosp_ind,hap_ind)].add_child(name=".".join(str(i) for i in self.pool.strains[temp_ind].parent),dist=min_time - self.pool.strains[hap_ind].t_birth)
+                # self.H[hosp_ind].d_hosp["H{0}-{1}".format(hosp_ind,del_ind)] = self.H[hosp_ind].d_hosp["H{0}-{1}".format(hosp_ind,del_ind)].add_child(name="X",dist=t - self.pool.strains[hap_ind].t_birth)
+                # self.H[hosp_ind].d_hosp["H{0}-{1}".format(hosp_ind,del_ind)].add_feature("alive","F")
+                # self.H[hosp_ind].d_hosp["H{0}-{1}".format(hosp_ind,temp_ind)] = self.tree.add_child(name=".".join(str(i) for i in self.pool.strains[temp_ind].parent),dist=min_time - self.pool.strains[hap_ind].t_birth)
+                # if del_ind >= 0:
+                #   self.pool.del_strain(del_ind, inf_time)
+                #new_ind = np.random.choice(range(len(self.H)),p=self.p[hosp_ind]) #randomly pick a new hospital index with weighted probability where a transfer to the same hospital is used as a convention for no transfer taking place
+                # if new_ind != hosp_ind:
+                #     transfers.append([inf_time, hosp_ind, new_ind])
+                #     self.H[new_ind].add_index(temp_ind)
+                inf_times = [inf_time + t.next_inf_time() for t in self.H]
+                tfr_times = [[inf_time + i for i in t.next_tfr_time()] for t in self.H]
+                tfr_time = min(min(i) for i in tfr_times)
+                inf_time = min(inf_times)
+                k = k + self.pool.strains[temp_ind].mut
         elif tfr_time < inf_time:
             hosp_ind = [min(i) for i in tfr_times].index(tfr_time)
             next_hosp = self.H[hosp_ind]
@@ -216,7 +231,7 @@ class System:
             #self.pool.d_var["S{0}".format(i)].add_child(name="X",dist=#death time# - self.pool.d_var["S{0}".format(i)].dist)
     return print(fin_strain,hosp_strains,pool_strains,"","Transfers:",*transfers, sep="\n")
 
-x = [Strain(["A"],0,0,0),Strain(["B"],0,0,0),Strain(["C"],0,0,0),Strain(["D"],0,0,0)] #pool of all strains at initialisation
+x = [Strain(["A"],0,0,0,[0]*20),Strain(["B"],0,0,0,[0]*20),Strain(["C"],0,0,0,[0]*20),Strain(["D"],0,0,0,[0]*20)] #pool of all strains at initialisation
 n = 4
 strains = [[[0,1],[9,1]],[[0],[10]],[[2],[10]],[[3],[10]]] #list of length n=#hosp where [strain index],[number of each strain]
 # p = [[0,0,1,0],
@@ -227,7 +242,7 @@ tfr_rate = [[0,0,0.5,0],
             [0,0,0,0.1],
             [0,0,0,0],
             [0,0,0,0]]
-sys = System(n,1,1,tfr_rate,5,x,strains,pop=1)
+sys = System(n,1,1,tfr_rate,10,x,strains,pop=1,k=0,len_seq=20)
 print(sys)
 sys.transfers()
 print(sys.pool.tree.get_ascii(show_internal=True,attributes=['name','hospital']))
