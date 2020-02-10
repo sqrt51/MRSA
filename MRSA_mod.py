@@ -8,6 +8,7 @@ class Pool:
     self.d_var = {}
     for i,v in enumerate(strains):
         self.d_var["S{0}".format(i)] = self.tree.add_child(name=".".join(str(j) for j in self.strains[i].parent),dist=self.strains[i].t_birth)
+        self.d_var["S{0}".format(i)].add_feature('t_birth',self.strains[i].t_birth)
         #self.d_var["S{0}".format(i)].add_feature('alive',"T")
 
   def tree(self):
@@ -26,17 +27,17 @@ class Pool:
         parent_strain.num_child += 1
         patient_strain = Strain(parent_strain.parent + [parent_strain.num_child], 0, num_muts, t)
         self.strains.append(patient_strain)
-        self.d_var["S{0}".format(len(self.strains)-1)] = self.d_var["S{0}".format(index)].add_child(name=".".join(str(i) for i in parent_strain.parent) + "." + str(parent_strain.num_child),dist=t - self.strains[index].t_birth)
-        self.d_var["S{0}".format(len(self.strains)-1)].add_feature('hospital',hosp)
+        self.d_var["S{0}".format(len(self.strains)-1)] = self.d_var["S{0}".format(index)].add_child(name=".".join(str(i) for i in patient_strain.parent),dist=t - self.strains[index].t_birth)
+        self.d_var["S{0}".format(len(self.strains)-1)].add_features(hospital=hosp, t_birth=t)
         #self.d_var["S{0}".format(len(self.strains)-1)].add_feature('alive',"T")
         self.d_var["S{0}".format(index)] = self.d_var["S{0}".format(index)].add_child(name=self.d_var["S{0}".format(index)].name,dist=0)
-        self.d_var["S{0}".format(index)].add_feature('hospital',hosp)
+        self.d_var["S{0}".format(index)].add_features(hospital=hosp,t_birth="t")
         #self.d_var["S{0}".format(index)].add_feature('alive',"T")
         return len(self.strains)-1
     elif num_muts == 0:
         return index
 
-  def del_strain(self, index, time):
+  def del_strain(self, index, time): ##unused at the moment in the script
     self.d_var["S{0}".format(index)].add_feature('alive',"F")
     self.d_var["S{0}".format(index)].add_child(name="X",dist=time - self.d_var["S{0}".format(index)].dist)
 
@@ -71,6 +72,8 @@ class Hospital:
     self.tfr_rate = tfr_rate
     self.pop = pop
     self.obs_prob = obs_prob
+    self.d_hosp = {}
+    self.tree = Tree()
 
   def __repr__(self):
     return self.__str__()
@@ -99,11 +102,10 @@ class Hospital:
 
   def add_index(self, index):
     del_ind = np.random.choice(len(self.indices[0]),p=[i/sum(self.indices[1]) for i in self.indices[1]])
+    del_str = self.indices[0][del_ind]
     if self.indices[1][del_ind] > 1:
         self.indices[1][del_ind] -= 1
-        del_str = -1
     elif self.indices[1][del_ind] == 1:
-        del_str = self.indices[0][del_ind]
         del self.indices[0][del_ind]
         del self.indices[1][del_ind]
     if index in self.indices[0]:
@@ -128,6 +130,12 @@ class System:
     self.H = []
     for i in range(n):
       self.H.append(Hospital(strains[i], self.tfin, self.mut_rate, self.inf_rate, self.tfr_rate[i], self.pop))
+    for i,h in enumerate(self.H):
+        for i,s in enumerate(h.indices[0]):
+            prop = h.indices[1][i]
+            while prop >=1:
+                h.d_hosp["H{0}-{1}".format(i,s)] = h.tree.add_child(name=".".join(str(j) for j in self.pool.strains[s].parent),dist=self.pool.strains[s].t_birth)
+                prop -= 1
 
   def __repr__(self):
     return self.__str__()
@@ -150,6 +158,10 @@ class System:
             hap_ind = next_hosp.indices[0][np.random.choice(len(next_hosp.indices[0]),p=[i/sum(next_hosp.indices[1]) for i in next_hosp.indices[1]])] #randomly with weighting select an entry from the indicies attribute of Hospital corresponding to the index of a strain in pool
             temp_ind = self.pool.add_new_strain(self.mut_rate, hap_ind, inf_time, hosp_ind) #return index of new strain that is the child from one of the strains in the current incidence of H
             del_ind = self.H[hosp_ind].add_index(temp_ind) #add that strain to the list of strains in that H
+            # self.H[hosp_ind].d_hosp["H{0}-{1}".format(hosp_ind,temp_ind)] = self.H[hosp_ind].d_hosp["H{0}-{1}".format(hosp_ind,hap_ind)].add_child(name=".".join(str(i) for i in self.pool.strains[temp_ind].parent),dist=min_time - self.pool.strains[hap_ind].t_birth)
+            # self.H[hosp_ind].d_hosp["H{0}-{1}".format(hosp_ind,del_ind)] = self.H[hosp_ind].d_hosp["H{0}-{1}".format(hosp_ind,del_ind)].add_child(name="X",dist=t - self.pool.strains[hap_ind].t_birth)
+            # self.H[hosp_ind].d_hosp["H{0}-{1}".format(hosp_ind,del_ind)].add_feature("alive","F")
+            # self.H[hosp_ind].d_hosp["H{0}-{1}".format(hosp_ind,temp_ind)] = self.tree.add_child(name=".".join(str(i) for i in self.pool.strains[temp_ind].parent),dist=min_time - self.pool.strains[hap_ind].t_birth)
             # if del_ind >= 0:
             #   self.pool.del_strain(del_ind, inf_time)
             #new_ind = np.random.choice(range(len(self.H)),p=self.p[hosp_ind]) #randomly pick a new hospital index with weighted probability where a transfer to the same hospital is used as a convention for no transfer taking place
@@ -167,6 +179,9 @@ class System:
             new_ind = tfr_times[hosp_ind].index(tfr_time)
             transfers.append([tfr_time, hap_ind, hosp_ind, new_ind])
             del_ind = self.H[new_ind].add_index(hap_ind)
+            # self.H[new_ind].d_hosp["H{0}-{1}".format(new_ind,hap_ind)] = self.H[new_ind].d_var["H{0}-{1}".format(new_ind,hap_ind)].add_child(name=".".join(str(i) for i in self.pool.strains[hap_ind].parent),dist=min_time - self.pool.strains[hap_ind].t_birth)
+            # self.H[new_ind].d_hosp["H{0}-{1}".format(new_ind,del_ind)] = self.H[new_ind].d_var["H{0}-{1}".format(new_ind,del_ind)].add_child(name="X",dist=t - self.pool.strains[hap_ind].t_birth)
+            # self.H[new_ind].d_hosp["H{0}-{1}".format(new_ind,del_ind)].add_feature("alive","F")
             # if del_ind >= 0:
             #   self.pool.del_strain(del_ind, tfr_time)
             tfr_times = [[tfr_time + i for i in t.next_tfr_time()] for t in self.H]
@@ -185,7 +200,21 @@ class System:
     for i,hosp in enumerate(self.H):
       hosp_strains.append("Hospital {i}: {hosp}\n".format(i="%02d" % i, hosp=hosp.indices))
     hosp_strains = "".join(hosp_strains)
-    return print(fin_strain,hosp_strains,"Transfers:",*transfers, sep="\n")
+    pool_strains = []
+    for i,strain in enumerate(self.pool.strains):
+        tot = 0
+        for H in self.H:
+            if i in H.indices[0]:
+                tot += H.indices[1][H.indices[0].index(i)]
+        pool_strains.append(tot)
+    for i,num in enumerate(pool_strains):
+        if num >= 1: ##something is not working here
+            self.pool.d_var["S{0}".format(i)].add_feature('alive',"T")
+            self.pool.d_var["S{0}".format(i)].add_child(name="O",dist=self.tfin - self.pool.strains[i].t_birth)
+        elif num == 0:
+            self.pool.d_var["S{0}".format(i)].add_feature('alive',"F")
+            #self.pool.d_var["S{0}".format(i)].add_child(name="X",dist=#death time# - self.pool.d_var["S{0}".format(i)].dist)
+    return print(fin_strain,hosp_strains,pool_strains,"","Transfers:",*transfers, sep="\n")
 
 x = [Strain(["A"],0,0,0),Strain(["B"],0,0,0),Strain(["C"],0,0,0),Strain(["D"],0,0,0)] #pool of all strains at initialisation
 n = 4
@@ -213,12 +242,14 @@ colour=["red","blue","green","black"]
 nstyle = [NodeStyle(),NodeStyle(),NodeStyle(),NodeStyle()]
 for i,val in enumerate(nstyle):
   nstyle[i]["fgcolor"] = colour[i]
-  nstyle[i]["size"] = 10
+  nstyle[i]["size"] = 8
 
 for i in range(n):
   for node in sys.pool.tree.iter_search_nodes(hospital = i):
     node.set_style(nstyle[i])
 sys.pool.tree.show(tree_style=ts)
+#sys.pool.tree.render("test3.png", w=180, units="mm")
+print(sys.pool.d_var["S7"].t_birth)
 # i = 0
 # while len(sys.pool.strains[i].parent) == 1:
 #     print(sys.pool.strains[i].parent)
