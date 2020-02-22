@@ -189,12 +189,16 @@ class System:
         elif tfr_time < inf_time:
             hosp_ind = [min(i) for i in tfr_times].index(tfr_time)
             next_hosp = self.H[hosp_ind]
+<<<<<<< HEAD
             weights = [0]*len(next_hosp.indices)
             for i,m in enumerate(next_hosp.indices):
                 weights[i] = np.exp(m[1]-inf_time)
             s = sum(weights)
             norm_w = [float(i)/s for i in weights]
             hap_ind = next_hosp.indices[np.random.choice(len(next_hosp.indices),p=norm_w)][0]
+=======
+            hap_ind = next_hosp.indices[np.random.choice(len(next_hosp.indices))][0]
+>>>>>>> 4ce695ece56f3f5a6aec8fe2119a8af09fc82c8b
             new_ind = tfr_times[hosp_ind].index(tfr_time)
             transfers.append([tfr_time, hap_ind, hosp_ind, new_ind])
             del_ind = self.H[new_ind].add_index(hap_ind,tfr_time)
