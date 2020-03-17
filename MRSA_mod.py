@@ -136,9 +136,9 @@ class System:
     self.H = []
     for i in range(n):
       self.H.append(Hospital(strains[i], self.tfin, self.mut_rate, self.inf_rate, self.tfr_rate[i]))
-    # for i,h in enumerate(self.H):
-    #     for i,s in enumerate(h.indices):
-    #         h.d_hosp["H{0}-{1}".format(i,s)] = h.tree.add_child(name=".".join(str(j) for j in self.pool.strains[s[0]].parent),dist=self.pool.strains[s[0]].t_birth)
+    for i,h in enumerate(self.H):
+        for j,s in enumerate(h.indices):
+            h.d_hosp["H{0}-{1}".format(i,s[0])] = h.tree.add_child(name=".".join(str(j) for j in self.pool.strains[s[0]].parent),dist=s[1])
 
   def __repr__(self):
     return self.__str__()
@@ -157,21 +157,22 @@ class System:
     k = 0
     while min_time < self.tfin:
         if inf_time < tfr_time:
-            hosp_ind = inf_times.index(inf_time)  #select the index of the current min of times
-            next_hosp = self.H[hosp_ind]      #select the hospital corresponding to that index
-            weights = [0]*len(next_hosp.indices)
+            hosp_ind = inf_times.index(inf_time)  # select the index of the current min of times
+            next_hosp = self.H[hosp_ind]      # select the hospital corresponding to that index
+            weights = [0]*len(next_hosp.indices) # generate empty list of weights for each strain in the hospital
             for i,m in enumerate(next_hosp.indices):
-                weights[i] = np.exp(m[1]-inf_time)
+                weights[i] = np.exp(m[1]-inf_time) # fill weights list with exp(t_obs - current time) for each strain in list
             s = sum(weights)
-            norm_w = [float(i)/s for i in weights]
-            hap_ind = next_hosp.indices[np.random.choice(len(next_hosp.indices),p=norm_w)][0] #randomly select an entry from the indicies attribute of Hospital corresponding to the index of a strain in pool
+            norm_w = [float(i)/s for i in weights] # normalise weights list to sum to 1
+            print(norm_w)
+            hap_ind = next_hosp.indices[np.random.choice(len(next_hosp.indices),p=norm_w)][0] #randomly select with weighting an entry from the indicies attribute of Hospital corresponding to the index of a strain in pool
             temp_ind = self.pool.add_new_strain(self.mut_rate, hap_ind, inf_time, hosp_ind, k, self.len_seq) #return index of new strain that is the child from one of the strains in the current incidence of H
             if temp_ind == -1: #if k + num_mut > len_seq then stop
                 inf_time = self.tfin
                 tfr_time = self.tfin
             else:
                 del_ind = self.H[hosp_ind].add_index(temp_ind,inf_time) #add that strain to the list of strains in that H and deletes a random strain from the list uniformly
-                # self.H[hosp_ind].d_hosp["H{0}-{1}".format(hosp_ind,temp_ind)] = self.H[hosp_ind].d_hosp["H{0}-{1}".format(hosp_ind,hap_ind)].add_child(name=".".join(str(i) for i in self.pool.strains[temp_ind].parent),dist=min_time - self.pool.strains[hap_ind].t_birth)
+                self.H[hosp_ind].d_hosp["H{0}-{1}".format(hosp_ind,temp_ind)] = self.H[hosp_ind].d_hosp["H{0}-{1}".format(hosp_ind,hap_ind)].add_child(name=".".join(str(i) for i in self.pool.strains[temp_ind].parent),dist=min_time - self.H[hosp_ind].indices[hap_ind][1])
                 # self.H[hosp_ind].d_hosp["H{0}-{1}".format(hosp_ind,del_ind)] = self.H[hosp_ind].d_hosp["H{0}-{1}".format(hosp_ind,del_ind)].add_child(name="X",dist=t - self.pool.strains[hap_ind].t_birth)
                 # self.H[hosp_ind].d_hosp["H{0}-{1}".format(hosp_ind,del_ind)].add_feature("alive","F")
                 # self.H[hosp_ind].d_hosp["H{0}-{1}".format(hosp_ind,temp_ind)] = self.tree.add_child(name=".".join(str(i) for i in self.pool.strains[temp_ind].parent),dist=min_time - self.pool.strains[hap_ind].t_birth)
@@ -189,20 +190,17 @@ class System:
         elif tfr_time < inf_time:
             hosp_ind = [min(i) for i in tfr_times].index(tfr_time)
             next_hosp = self.H[hosp_ind]
-<<<<<<< HEAD
             weights = [0]*len(next_hosp.indices)
             for i,m in enumerate(next_hosp.indices):
                 weights[i] = np.exp(m[1]-inf_time)
             s = sum(weights)
             norm_w = [float(i)/s for i in weights]
+            print(norm_w)
             hap_ind = next_hosp.indices[np.random.choice(len(next_hosp.indices),p=norm_w)][0]
-=======
-            hap_ind = next_hosp.indices[np.random.choice(len(next_hosp.indices))][0]
->>>>>>> 4ce695ece56f3f5a6aec8fe2119a8af09fc82c8b
-            new_ind = tfr_times[hosp_ind].index(tfr_time)
+            new_ind = tfr_times[hosp_ind].index(tfr_time) # index of new hospital to transfer to
             transfers.append([tfr_time, hap_ind, hosp_ind, new_ind])
             del_ind = self.H[new_ind].add_index(hap_ind,tfr_time)
-            # self.H[new_ind].d_hosp["H{0}-{1}".format(new_ind,hap_ind)] = self.H[new_ind].d_var["H{0}-{1}".format(new_ind,hap_ind)].add_child(name=".".join(str(i) for i in self.pool.strains[hap_ind].parent),dist=min_time - self.pool.strains[hap_ind].t_birth)
+            # self.H[new_ind].d_hosp["H{0}-{1}".format(new_ind,hap_ind)] = self.H[new_ind].d_var["H{0}-{1}".format(new_ind,hap_ind)].add_child(name=".".join(str(i) for i in self.pool.strains[hap_ind].parent),dist=min_time - self.H[new_ind].indices[hap_ind][1])
             # self.H[new_ind].d_hosp["H{0}-{1}".format(new_ind,del_ind)] = self.H[new_ind].d_var["H{0}-{1}".format(new_ind,del_ind)].add_child(name="X",dist=t - self.pool.strains[hap_ind].t_birth)
             # self.H[new_ind].d_hosp["H{0}-{1}".format(new_ind,del_ind)].add_feature("alive","F")
             # if del_ind >= 0:
@@ -233,7 +231,7 @@ strains = [[0,1],[0],[2],[3]] #list of length n=#hosp where [strain index] for e
 #      [0,0,1,0],
 #      [0,0,0,1]]
 tfr_rate = [[0,0,0.5,0],
-            [0,0,0,1],
+            [0,0,0,0],
             [0,0,0,0],
             [0,0,0,0]]
 tfr_rate_r = [[]]
@@ -258,5 +256,6 @@ for i in range(n):
   for node in sys.pool.tree.iter_search_nodes(hospital = i):
     node.set_style(nstyle[i])
 sys.pool.tree.show(tree_style=ts)
+sys.H[1].tree.show(tree_style=ts)
 #sys.pool.tree.render("test3.png", w=180, units="mm")
 #print(sys.pool.d_var["S7"].t_birth)
